@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vert Field Map — Labs & Techs</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { display: flex; height: 100vh; background: #f4f6f9; color: #333; }
+        
+        /* Sidebar Styling */
+        #sidebar { width: 380px; background: white; box-shadow: 2px 0 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; z-index: 1000; }
+        .header { padding: 20px; background: #5c24b3; color: white; }
+        .header h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px; }
+        .header p { font-size: 0.85rem; opacity: 0.8; }
+        
+        .search-container { padding: 15px; border-bottom: 1px solid #eee; background: #fafafa; }
+        #search-bar { width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9rem; outline: none; }
+        #search-bar:focus { border-color: #5c24b3; box-shadow: 0 0 0 2px rgba(92, 36, 179, 0.2); }
+        
+        .directory { flex: 1; overflow-y: auto; padding: 15px; }
+        .section-title { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; color: #666; font-weight: 700; margin: 15px 0 8px 0; display: flex; justify-content: space-between; }
+        .count-badge { background: #e2e8f0; color: #4a5568; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; }
+        
+        .list-item { padding: 12px; border-radius: 6px; border: 1px solid #e2e8f0; margin-bottom: 8px; cursor: pointer; transition: all 0.2s; background: white; }
+        .list-item:hover { border-color: #5c24b3; background: #f7f5ff; }
+        .item-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 2px; display: flex; justify-content: space-between; align-items: center; }
+        .item-meta { font-size: 0.8rem; color: #666; margin-bottom: 4px; }
+        .item-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .tag { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; background: #edf2f7; color: #4a5568; font-weight: 500; }
+        .tag.p5 { background: #e6fffa; color: #047481; border: 1px solid #b2f5ea; }
+        .tag.role { background: #ebf8ff; color: #2b6cb0; }
+        
+        /* Map Styling */
+        #map { flex: 1; height: 100%; }
+        
+        /* Popup Customization */
+        .popup-content h3 { font-size: 1rem; margin-bottom: 4px; color: #333; }
+        .popup-content p { font-size: 0.85rem; color: #666; margin-bottom: 2px; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="header">
+            <h1>Vert Field Map</h1>
+            <p>Internal Operations & Dispatch Portal</p>
+        </div>
+        <div class="search-container">
+            <input type="text" id="search-bar" placeholder="Search labs, techs, certifications..." oninput="filterDirectory()">
+        </div>
+        <div class="directory" id="directory-list">
+            </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // --- DATA OBJECTS (Edit these safely anytime!) ---
+        const labs = [
+            { name: "EmLab SD", city: "San Diego, CA", phone: "(858) 268-9849", coords: [32.8213, -117.1292] },
+            { name: "EMSL SD", city: "San Diego, CA", phone: "(858) 499-1303", coords: [32.8124, -117.1512] },
+            { name: "Greyscope", city: "San Diego, CA", phone: "(760) 932-0563", coords: [32.7157, -117.1611] },
+            { name: "EMSL San Leandro", city: "San Leandro, CA", phone: "(510) 895-3675", coords: [37.7249, -122.1561] },
+            { name: "EmLab Burlingame", city: "Burlingame, CA", phone: "(866) 871-1984", coords: [37.5779, -122.3481] },
+            { name: "AIH", city: "Anaheim, CA", phone: "(562) 860-2201", coords: [33.8366, -117.9145] },
+            { name: "EmLab Glendale", city: "Glendale, CA", phone: "(866) 871-1984", coords: [34.1425, -118.2551] },
+            { name: "EmLab Pomona", city: "Pomona, CA", phone: "(866) 871-1984", coords: [34.0551, -117.7501] },
+            { name: "EmLab Tustin", city: "Tustin, CA", phone: "(866) 871-1984", coords: [33.7454, -117.8261] },
+            { name: "Ecologics", city: "Fullerton, CA", phone: "(714) 632-8100", coords: [33.8704, -117.9242] },
+            { name: "Inland Asbestos Lab", city: "Redlands, CA", phone: "(909) 435-5504", coords: [34.0556, -117.1825] },
+            { name: "LA Testing Huntington Beach", city: "Huntington Beach, CA", phone: "(714) 828-4999", coords: [33.6595, -117.9988] },
+            { name: "LA Testing Pasadena", city: "South Pasadena, CA", phone: "1-800-303-0047", coords: [34.1161, -118.1503] },
+            { name: "Pinnacle Laboratory", city: "Lawndale, CA", phone: "(310) 431-9270", coords: [33.8872, -118.3526] }
+        ];
+
+        const technicians = [
+            { name: "Niki", role: "CSST", city: "Arcadia, CA", p5: true, certs: ["CSST", "CMI", "Lead Risk Assessor"], coords: [34.1397, -118.0353] },
+            { name: "Matt", role: "CSST", city: "Ontario, CA", p5: true, certs: ["CSST", "CMI", "Lead Risk Assessor"], coords: [34.0633, -117.6509] },
+            { name: "Jorge", role: "CSST", city: "Alhambra, CA", p5: true, certs: ["CSST", "CMI", "Lead Sampling Tech"], coords: [34.0953, -118.1270] },
+            { name: "Jonathan", role: "Apprentice", city: "Moreno Valley, CA", p5: false, certs: ["Lead Sampling Tech", "Building Inspector Cert.", "Contractor Supervisor Cert."], coords: [33.9425, -117.2297] },
+            { name: "Alex", role: "Apprentice", city: "Newhall, CA", p5: false, certs: ["Lead Sampling Tech", "Building Inspector Cert.", "Contractor Supervisor Cert."], coords: [34.3822, -118.5295] },
+            { name: "John", role: "CSST", city: "Anaheim, CA", p5: true, certs: ["CSST", "CMI", "Lead Sampling Tech"], coords: [33.8366, -117.9145] },
+            { name: "Peter", role: "Apprentice", city: "Long Beach, CA", p5: false, certs: ["Lead Sampling Tech", "Building Inspector Cert.", "Contractor Supervisor Cert."], coords: [33.7701, -118.1937] }, // Updated Location
+            { name: "Ralph", role: "CAC", city: "La Mesa, CA", p5: true, certs: ["CAC", "CMI", "Lead Risk Assessor", "HAZWOPER"], coords: [32.7678, -117.0231] },
+            { name: "Ernie", role: "Apprentice", city: "San Diego, CA", p5: false, certs: ["Lead Sampling Tech", "Building Inspector Cert.", "Contractor Supervisor Cert."], coords: [32.7157, -117.1611] },
+            { name: "Angel", role: "Apprentice", city: "Lemon Grove, CA", p5: false, certs: ["Lead Sampling Tech", "Building Inspector Cert.", "Contractor Supervisor Cert."], coords: [32.7426, -117.0314] },
+            { name: "Brady", role: "CSST", city: "San Diego, CA", p5: true, certs: ["Lead Sampling Tech"], coords: [32.7300, -117.1400] },
+            { name: "Gary", role: "CAC", city: "Bay Area, CA", p5: true, certs: ["CAC", "CMI", "Lead Inspector / Risk Assessor"], coords: [37.7749, -122.4194] }
+        ];
+
+        // Initialize Map centered in Southern California
+        const map = L.map('map').setView([33.9500, -117.8000], 9);
+
+        // Add Light Tile Layer map styling
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        }).addTo(map);
+
+        // Custom Marker Markers Customization
+        const blueIcon = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
+        const violetIcon = new L.Icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
+
+        let allMarkers = [];
+
+        // Build the Sidebar & Pins
+        function renderInterface(filteredLabs = labs, filteredTechs = technicians) {
+            const container = document.getElementById('directory-list');
+            container.innerHTML = '';
+
+            // Clear old markers from map
+            allMarkers.forEach(m => map.removeLayer(m));
+            allMarkers = [];
+
+            // Add Labs Section
+            if(filteredLabs.length > 0) {
+                const labHeader = document.createElement('div');
+                labHeader.className = 'section-title';
+                labHeader.innerHTML = `<span>Laboratories</span> <span class="count-badge">${filteredLabs.length}</span>`;
+                container.appendChild(labHeader);
+
+                filteredLabs.forEach(lab => {
+                    // Create Marker
+                    const m = L.marker(lab.coords, {icon: blueIcon}).bindPopup(`
+                        <div class="popup-content">
+                            <h3>🔬 ${lab.name}</h3>
+                            <p><b>Loc:</b> ${lab.city}</p>
+                            <p><b>Phone:</b> ${lab.phone}</p>
+                        </div>
+                    `);
+                    m.addTo(map);
+                    allMarkers.push(m);
+
+                    // Create Sidebar Card
+                    const card = document.createElement('div');
+                    card.className = 'list-item';
+                    card.innerHTML = `
+                        <div class="item-name">🔬 ${lab.name}</div>
+                        <div class="item-meta">${lab.city} • ${lab.phone}</div>
+                    `;
+                    card.onclick = () => { map.setView(lab.coords, 13); m.openPopup(); };
+                    container.appendChild(card);
+                });
+            }
+
+            // Add Technicians Section
+            if(filteredTechs.length > 0) {
+                const techHeader = document.createElement('div');
+                techHeader.className = 'section-title';
+                techHeader.innerHTML = `<span>Technicians</span> <span class="count-badge">${filteredTechs.length}</span>`;
+                container.appendChild(techHeader);
+
+                filteredTechs.forEach(tech => {
+                    // Create Marker
+                    const m = L.marker(tech.coords, {icon: violetIcon}).bindPopup(`
+                        <div class="popup-content">
+                            <h3>👷 ${tech.name} (${tech.role})</h3>
+                            <p><b>Base:</b> ${tech.city}</p>
+                            <p><b>Certs:</b> ${tech.certs.join(', ')}</p>
+                            ${tech.p5 ? '<p style="color:#047481; font-weight:bold;">✓ P5 Eligible</p>' : ''}
+                        </div>
+                    `);
+                    m.addTo(map);
+                    allMarkers.push(m);
+
+                    // Create Sidebar Card
+                    const card = document.createElement('div');
+                    card.className = 'list-item';
+                    card.innerHTML = `
+                        <div class="item-name">👷 ${tech.name} <span class="tag role">${tech.role}</span></div>
+                        <div class="item-meta">${tech.city}</div>
+                        <div class="item-tags">
+                            ${tech.p5 ? '<span class="tag p5">✓ P5 Eligible</span>' : ''}
+                            ${tech.certs.map(c => `<span class="tag">${c}</span>`).join('')}
+                        </div>
+                    `;
+                    card.onclick = () => { map.setView(tech.coords, 13); m.openPopup(); };
+                    container.appendChild(card);
+                });
+            }
+        }
+
+        // Live Search Filter Logic
+        function filterDirectory() {
+            const query = document.getElementById('search-bar').value.toLowerCase();
+            
+            const filteredLabs = labs.filter(l => 
+                l.name.toLowerCase().includes(query) || l.city.toLowerCase().includes(query)
+            );
+            
+            const filteredTechs = technicians.filter(t => 
+                t.name.toLowerCase().includes(query) || 
+                t.city.toLowerCase().includes(query) || 
+                t.role.toLowerCase().includes(query) ||
+                t.certs.some(c => c.toLowerCase().includes(query))
+            );
+
+            renderInterface(filteredLabs, filteredTechs);
+        }
+
+        // Initial Run on Load
+        renderInterface();
+    </script>
+</body>
+</html>
